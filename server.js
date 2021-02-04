@@ -74,24 +74,26 @@ app.get('/api/exercise/users', (req, res) => {
 });
 
 app.post('/api/exercise/add', (req, res) => {
-    const exercise = new Exercice({ user: req.body.userId, ...req.body });
+  let { userId, date } = req.body;
+  if (!date) date = Date.now();
+  const exercise = new Exercice({ ...req.body, user: userId, date });
 
-    exercise.save((err, {description, duration, date}) => {
+  exercise.save((err, {description, duration, date}) => {
+    if (err) return res.json({ err });
+
+    User.findById(req.body.userId, (err, user) => {
       if (err) return res.json({ err });
 
-      User.findById(req.body.userId, (err, user) => {
-        if (err) return res.json({ err });
-
-        user.exercises.push(exercise);
-        user.save((err) => {
-          return res.json({
-            _id: user._id,
-            username: user.username,
-            description,
-            duration,
-            date: new Date(date).toUTCString()
-          });
+      user.exercises.push(exercise);
+      user.save((err) => {
+        return res.json({
+          _id: user._id,
+          username: user.username,
+          description,
+          duration,
+          date: new Date(date).toUTCString()
         });
+      });
 
     });
   });
