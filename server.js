@@ -28,13 +28,12 @@ const userSchema = new Schema({
   username: {
     type: String,
     required: true
-  }
+  },
+  exercises: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Exercise' }]
 });
 
-const User = mongoose.model("User", userSchema);
-
 const exerciseSchema = new Schema({
-  userId: {
+  user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
@@ -54,43 +53,68 @@ const exerciseSchema = new Schema({
 });
 
 const Exercice = mongoose.model('Exercise', exerciseSchema);
+const User = mongoose.model("User", userSchema);
 
 app.post('/api/exercise/new-user', (req, res) => {
   const { username } = req.body;
-  const user = new User({username});
-  user.save((err, data) => {
+  const user = new User({ username });
+  user.save((err, { _id }) => {
     if (err) return res.json({ err });
 
-    return res.json(data);
+    return res.json({ username, _id });
   });
 });
 
 app.get('/api/exercise/users', (req, res) => {
-  User.find({}, (err, data) => {
+  User.find({}, (err, users) => {
     if (err) return res.json({ err });
 
-    return res.json(data);
+    return res.json(users.map(({username, _id}) => ({username, _id})));
   });
 });
 
 app.post('/api/exercise/add', (req, res) => {
-  User.findById(req.body.userId, (err, user) => {
-    if (err) return res.json({ err });
+    const exercise = new Exercice({ user: req.body.userId, ...req.body });
 
-    const exercise = new Exercice(req.body);
-    exercise.save((err, data) => {
+    exercise.save((err, {description, duration, date}) => {
+      if (err) return res.json({ err });
+
+      User.findById(req.body.userId, (err, user) => {
+        if (err) return res.json({ err });
+
+        user.exercises.push(exercise);
+        user.save((err) => {
+          return res.json({
+            _id: user._id,
+            username: user.username,
+            description,
+            duration,
+            date: new Date(date).toUTCString()
+          });
+        });
+
+    });
+  });
+});
+
+app.get('/api/exercise/log', (req, res) => {
+  const { userId, from = "1970-01-01", to = Date.now(), limit } = req.query;
+
+  User.findById(userId)
+    .populate({
+      path: 'exercises',
+      options: { limit },
+      match: { date: { $gte: from, $lte: to }}
+    })
+    .exec((err, user) => {
       if (err) return res.json({ err });
 
       return res.json({
         _id: user._id,
-        username: user.username,
-        description: data.description,
-        duration: data.duration,
-        date: data.date
+        log: user.exercises.map(({description, duration, date}) => ({description, duration, date})),
+        count: user.exercises.length
       });
-    });
-  });
-
+    })
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
